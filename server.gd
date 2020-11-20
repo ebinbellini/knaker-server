@@ -30,12 +30,12 @@ func peer_connected(pid: int):
 remote func create_room(room_name):
 	print("skapar rum ", room_name)
 	var inst = room_res.instance()
+	var pid = get_tree().get_rpc_sender_id()
 	var l = len(room_name)
 	if (l > 0 && l <= 30 && find_room(room_name) == null) && names[pid] != null:
 		inst.name = room_name
-		var sender = get_tree().get_rpc_sender_id()
-		inst.call_deferred("set_owner", sender)
-		inst.call_deferred("add_player", sender)
+		inst.call_deferred("set_owner", pid)
+		inst.call_deferred("add_player", pid)
 		rooms.call_deferred("add_child", inst)
 
 
@@ -59,8 +59,12 @@ remote func join_room(room_name):
 
 		# Notify room members
 		var players = room.players()
-		for i in range(players):
-			rpc_id(players[i], "update_player_data", len(players), )
+		var rpnames = {}
+		for i in range(len(players)):
+			rpnames[players[i]] = names[players[i]]
+
+		for i in range(len(players)):
+			rpc_id(players[i], "update_player_data", len(players), players, rpnames)
 
 
 func find_room(name: String) -> Node:
@@ -92,7 +96,7 @@ func start_game_for_room(room):
 		rpc_id(pid, "start_game")
 
 
-func set_user_name(name):
+remote func set_username(name):
 	var pid = get_tree().get_rpc_sender_id()
 	names[pid] = name
 	
