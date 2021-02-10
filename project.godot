@@ -17,13 +17,17 @@ _global_script_class_icons={
 
 config/name="Knaker-server"
 run/main_scene="res://server.tscn"
+run/low_processor_mode_sleep_usec=6000
 config/icon="res://icon.png"
 
 [display]
 
-window/size/width=200
-window/size/height=100
+window/size/width=180
+window/size/height=25
 window/size/resizable=false
+window/vsync/use_vsync=false
+window/energy_saving/keep_screen_on=false
+window/ios/hide_home_indicator=false
 
 [network]
 
@@ -32,6 +36,10 @@ limits/tcp/connect_timeout_seconds=10
 [rendering]
 
 quality/driver/driver_name="GLES2"
+quality/intended_usage/framebuffer_allocation=1
+quality/intended_usage/framebuffer_allocation.mobile=1
 vram_compression/import_etc=true
 vram_compression/import_etc2=false
+quality/depth/hdr=false
 environment/default_environment="res://default_env.tres"
+quality/dynamic_fonts/use_oversampling=false

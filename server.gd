@@ -12,6 +12,7 @@ var pids = []
 
 
 func _ready():
+	randomize()
 	set_network_peer()
 	get_tree().connect("network_peer_connected", self, "peer_connected")
 	get_tree().connect("network_peer_disconnected", self, "peer_disconnected")
@@ -131,3 +132,9 @@ remote func set_username(name):
 	var pid = get_tree().get_rpc_sender_id()
 	names[pid] = name
 	
+
+remote func place_cards(room_name: String, cards: Array):
+	var pid = get_tree().get_rpc_sender_id()
+	var room = find_room(room_name)
+	if room:
+		room.player_placed_cards(pid, cards)
