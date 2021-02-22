@@ -138,3 +138,17 @@ remote func place_cards(room_name: String, cards: Array):
 	var room = find_room(room_name)
 	if room:
 		room.player_placed_cards(pid, cards)
+
+
+remote func place_down_card(room_name: String):
+	var pid = get_tree().get_rpc_sender_id()
+	var room = find_room(room_name)
+	if room:
+		room.player_placed_down_card(pid)
+
+
+remote func leave_game(room_name: String):
+	var pid = get_tree().get_rpc_sender_id()
+	var room = find_room("TEST ANVÄND room ISTÄLLET")
+	if room:
+		room.remove_player(pid)

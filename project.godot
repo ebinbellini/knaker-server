@@ -20,6 +20,10 @@ run/main_scene="res://server.tscn"
 run/low_processor_mode_sleep_usec=6000
 config/icon="res://icon.png"
 
+[debug]
+
+gdscript/warnings/unused_class_variable=true
+
 [display]
 
 window/size/width=180
