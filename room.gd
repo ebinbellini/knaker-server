@@ -294,6 +294,7 @@ func pick_up_pile(player: Player):
 
 
 func accept_move(cards: Array, transferables: Array, pid: int):
+
 	# The move is allowed!!
 	for p in players:
 		server.rpc_id(p.id, "cards_placed", transferables, pid)
@@ -301,6 +302,10 @@ func accept_move(cards: Array, transferables: Array, pid: int):
 	# Put the placed cards in the pile
 	for card in cards:
 		pile.append(card)
+
+	# Flip if a flippable quadruple is on the top of the pile
+	if is_top_flippable_quadruple():
+		should_pile_flip = true
 
 	var index: int = find_player_index(pid)
 	remove_cards_from_player(index, cards)
@@ -310,8 +315,21 @@ func accept_move(cards: Array, transferables: Array, pid: int):
 	elif not placing_players_turn_again:
 		transfer_turn()
 
-	
 	deal_new_cards_to_player(index)
+
+
+func is_top_flippable_quadruple() -> bool:
+	# Is a quadruple not consiting of 2, 7, or 10 on the top of the pile?
+	if len(pile) >= 4:
+		var i = len(pile) - 1 
+		var first: Card = pile[i]
+		if not (first.value == 2 or first.value == 7 or first.value == 10):
+			while i > 0:
+				i -= 1
+				if pile[i].value != first.value:
+					return false
+
+	return true
 
 
 func transfer_turn():
@@ -346,19 +364,23 @@ func remove_cards_from_player(index, cards):
 
 	for comp_card in cards:
 		for i in len(player.hand):
-			if player.hand[i].value == comp_card.value and player.hand[i].color == comp_card.color:
+			if are_cards_equal(comp_card, player.hand[i]):
 				players[index].hand.remove(i)
 				break
 
 		for i in len(player.up):
-			if player.up[i].value == comp_card.value and player.up[i].color == comp_card.color:
+			if are_cards_equal(comp_card, player.up[i]):
 				players[index].up.remove(i)
 				break
 
 		for i in len(player.down):
-			if player.down[i].value == comp_card.value and player.down[i].color == comp_card.color:
+			if are_cards_equal(comp_card, player.down[i]):
 				players[index].down.remove(i)
 				break
+
+
+func are_cards_equal(card1: Card, card2: Card) -> bool:
+	return card1.value == card2.value and card1.color == card2.color 
 
 
 func unruly_move(pid: int, reason: String):
@@ -394,9 +416,9 @@ func are_these_cards_placeable(cards: Array) -> bool:
 		if is_legal_stair(cards):
 			return is_first_placeable or two_placed
 
-		var homogenous: int = homogenous_ammount(cards)
-		if homogenous > 1 and (is_first_placeable or two_placed or is_at_least_tripple_three_on_knaker(cards)):
-			if homogenous == 4:
+		var homogenous: bool = is_homogenous(cards)
+		if homogenous and (is_first_placeable or two_placed or is_at_least_tripple_three_on_knaker(cards)):
+			if len(cards) == 4:
 				should_pile_flip = true
 			return true
 	
@@ -412,16 +434,15 @@ func is_at_least_tripple_three_on_knaker(cards: Array) -> bool:
 	return not is_top_knaker_at_least_rank(4)
 
 
-func homogenous_ammount(cards: Array) -> int:
-	# How many cards in a row are of the same value
+func is_homogenous(cards: Array) -> bool:
+	# Are all cards in of the same value
 	var first_val: int = cards[0].value
-	var i: int = 1;
-	while i < len(cards):
-		if cards[i].value != first_val:
-			return i - 1
-		i += 1
 
-	return i
+	for card in cards:
+		if card.value != first_val:
+			return false
+
+	return true
 
 
 func is_legal_stair(cards: Array) -> bool:
@@ -463,17 +484,15 @@ func is_card_placeable(card: Card) -> bool:
 	if len(pile) == 0:
 		return true
 
-
 	# Use the value of the first card that isn't 7
 	var top: Card = pile[first_non_seven_index()]
-
 	var tv: int = top.value
+	
 	match card.value:
 		2:
-			placing_players_turn_again = true
 			return not is_top_knaker_at_least_rank(3)
 		3:
-			return top.value == 3 or (top.value == Knaker and not is_top_knaker_at_least_rank(2))
+			return tv == 3 or (tv == Knaker and not is_top_knaker_at_least_rank(2))
 		7:
 			return not is_top_knaker_at_least_rank(2)
 		10:
