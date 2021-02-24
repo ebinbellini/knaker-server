@@ -26,8 +26,8 @@ gdscript/warnings/unused_class_variable=true
 
 [display]
 
-window/size/width=180
-window/size/height=25
+window/size/width=90
+window/size/height=12
 window/size/resizable=false
 window/vsync/use_vsync=false
 window/energy_saving/keep_screen_on=false

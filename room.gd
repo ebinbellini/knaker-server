@@ -155,19 +155,20 @@ func create_deck():
 	for color in [ Spade, Heart, Diamond, Clover ]:
 		# 2 - 10, Kn 11, Q 12, K 13, A 14
 		for value in range(2, 15):
-			var card: Card = Card.new()
-			card.color = color
-			card.value = value
-			deck.append(card)
+			deck.append(create_card(value, color))
 
 	# All three knakers
 	for knaker_color in [Spade, Clover, Heart]:
-		var knak = Card.new()
-		knak.value = Knaker
-		knak.color = knaker_color
-		deck.append(knak)
+		deck.append(create_card(Knaker, knaker_color))
 
 	deck.shuffle()
+
+
+func create_card(value: int, color: int) -> Card:
+	var card: Card = Card.new()
+	card.value = value
+	card.color = color
+	return card
 
 
 func card_to_transferable(card: Card) -> Array:
@@ -182,10 +183,7 @@ func card_array_to_transferable(card_array: Array) -> Array:
 
 
 func transferable_to_card(transferable: Array) -> Card:
-	var result = Card.new()
-	result.value = transferable[0]
-	result.color = transferable[1]
-	return result
+	return create_card(transferable[0], transferable[1])
 
 
 func transferable_array_to_cards(transferable_array: Array) -> Array:
@@ -219,23 +217,21 @@ func player_placed_down_card(pid: int):
 	player_cards_changed(player)
 	
 
-func player_has_cards(player: Player, cards: Array):
+func player_has_cards(player: Player, cards: Array) -> bool:
 	var selected_hand_cards: int = 0
 	var selected_up_cards: int = 0
 
 	for comp_card in cards:
 		for card in player.hand:
-			if card.value != comp_card.value or card.color != comp_card.color:
-				return true
-			selected_hand_cards += 1
+			if are_cards_equal(card, comp_card):
+				selected_hand_cards += 1
 
 	if selected_hand_cards == len(player.hand):
 		# Player is allowed to place his up cards
 		for comp_card in cards:
 			for card in player.up:
-				if card.value != comp_card.value or card.color != comp_card.color:
-					return true
-				selected_up_cards += 1
+				if are_cards_equal(card, comp_card):
+					selected_up_cards += 1
 
 	return selected_hand_cards + selected_up_cards == len(cards)
 	
@@ -319,15 +315,24 @@ func accept_move(cards: Array, transferables: Array, pid: int):
 
 
 func is_top_flippable_quadruple() -> bool:
+	# TODO not flippable if a stair was placed to create the quadruple
 	# Is a quadruple not consiting of 2, 7, or 10 on the top of the pile?
-	if len(pile) >= 4:
-		var i = len(pile) - 1 
-		var first: Card = pile[i]
-		if not (first.value == 2 or first.value == 7 or first.value == 10):
-			while i > 0:
-				i -= 1
-				if pile[i].value != first.value:
-					return false
+	if len(pile) < 4:
+		return false
+
+	var i = len(pile) - 1 
+	var first: Card = pile[i]
+
+	# A stair cannot contain 2, 7, or 10
+	if first.value == 2 or first.value == 7 or first.value == 10:
+		return false
+
+	#  Check if the top four are non-homogenous 
+	var end = i - 3
+	while i > end:
+		i -= 1
+		if pile[i].value != first.value:
+			return false
 
 	return true
 
@@ -394,7 +399,11 @@ func are_these_cards_placeable(cards: Array) -> bool:
 		# Mulitple cards
 
 		# If a two has been placed then any card can be placed afterward
-		var two_placed = pile[first_non_seven_index()].value == 2
+		var two_placed = false
+
+		var fns: int = first_non_seven_index()
+		if fns >= 0:
+			two_placed = (pile[fns].value == 2)
 
 		# Get rid of 2's and 7's
 		if (cards[0].value == 2):
@@ -449,12 +458,13 @@ func is_legal_stair(cards: Array) -> bool:
 	var prev_val: int = cards[0].value
 
 	# Ammount of unique values encountered
-	var unique: int = 0
+	var unique: int = 1
 
-	for i in range(1, len(cards)):
+	# Check all cards, including the first
+	for i in range(0, len(cards)):
 		var curr_val: int = cards[i].value
 
-		if curr_val == 10:
+		if curr_val == 10 or curr_val == 2:
 			return false
 
 		var same: bool = curr_val == prev_val
@@ -485,7 +495,13 @@ func is_card_placeable(card: Card) -> bool:
 		return true
 
 	# Use the value of the first card that isn't 7
-	var top: Card = pile[first_non_seven_index()]
+	var fns: int = first_non_seven_index()
+	var top: Card
+	if fns >= 0:
+		top = pile[fns]
+	else:
+		top = create_card(1, 0)
+
 	var tv: int = top.value
 	
 	match card.value:
@@ -500,15 +516,16 @@ func is_card_placeable(card: Card) -> bool:
 			return not is_top_knaker_at_least_rank(4)
 		Knaker:
 			# TODO check if frippelknåker
-			return not tv == 3
+			return tv != 3
 		_:
 			return card.value >= top.value
 
 
 func first_non_seven_index() -> int:
 	# Find the index of the first card in the pile that isn't seven
+	# Returns -1 if the pile consists of only sevens
 	var i: int = len(pile)-1
-	while pile[i].value == 7:
+	while i >= 0 and pile[i].value == 7:
 		i -= 1
 
 	return i

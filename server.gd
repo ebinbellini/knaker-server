@@ -149,7 +149,7 @@ remote func place_down_card(room_name: String):
 
 remote func leave_game(room_name: String):
 	var pid = get_tree().get_rpc_sender_id()
-	var room = find_room("TEST ANVÄND room ISTÄLLET")
+	var room = find_room(room_name)
 
 	# TODO tell all players so they can update their UI
 	if room:
