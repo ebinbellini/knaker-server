@@ -69,7 +69,7 @@ remote func join_room(room_name):
 
 	# TODO tell the user if they can't join and why
 
-	if room != null && names[pid] != null && room.player_count() < 6:
+	if room != null and not room.playing and names[pid] != null and room.player_count() < 6:
 		room.add_player(pid, names[pid])
 
 		rpc_id(pid, "go_to_waiting_room")

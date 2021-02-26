@@ -38,12 +38,11 @@ var placing_players_turn_again: bool = false
 # Should the pile be flipped if placement is succesful
 var should_pile_flip: bool = false
 
+# Is a game currently taking place
+export var playing: bool = false
+
 
 onready var server: Node = get_parent().get_parent()
-
-
-func _ready():
-	print("SÖRVER ÄR ", server)
 
 
 func add_player(pid: int, name: String):
@@ -107,6 +106,7 @@ func remove_player(pid: int):
 
 
 func initialize_game():
+	playing = true
 	in_trading_phase = true
 	turn_index = 0
 	create_deck()
@@ -247,7 +247,9 @@ func player_placed_cards(pid: int, transferables: Array):
 		unruly_move(pid, "HTSMT0C")
 		return
 
-	if find_player_index(pid) != turn_index:
+	var valid_insertion: bool = is_valid_insertion(cards)
+
+	if find_player_index(pid) != turn_index and not valid_insertion:
 		unruly_move(pid, "INYTY")
 		return
 
@@ -264,13 +266,26 @@ func player_placed_cards(pid: int, transferables: Array):
 	# Send a duplicate of cards in order to allow are_these_cards_placeable to
 	# edit the array safely
 	var placeable: bool = are_these_cards_placeable(cards.duplicate())
-	if not placeable:
+	if not placeable and not valid_insertion:
 		if len(cards) == 1:
 			unruly_move(pid, "YMNPTCH")
 		else:
 			unruly_move(pid, "YMNPTHCH")
 	else:
 		accept_move(cards, transferables, pid)
+
+
+func is_valid_insertion(cards: Array) -> bool:
+	# Is this a valid "instick" (insertion)
+	var fnsi: int = first_non_seven_index()
+	if fnsi == -1:
+		return false
+
+	if not is_homogenous(cards):
+		return false
+
+	var top: Card = pile[fnsi]
+	return cards[0].value == top.value
 
 
 func player_cards_changed(player):
@@ -290,7 +305,6 @@ func pick_up_pile(player: Player):
 
 
 func accept_move(cards: Array, transferables: Array, pid: int):
-
 	# The move is allowed!!
 	for p in players:
 		server.rpc_id(p.id, "cards_placed", transferables, pid)
@@ -300,8 +314,14 @@ func accept_move(cards: Array, transferables: Array, pid: int):
 		pile.append(card)
 
 	# Flip if a flippable quadruple is on the top of the pile
-	if is_top_flippable_quadruple():
+	# or if a ten is on top of the pile
+	if is_top_flippable_quadruple() or pile[len(pile) - 1].value == 10:
 		should_pile_flip = true
+
+	# Player gets the turn again if a two was placed on top, optionally followed by sevens
+	var fnsi: int = first_non_seven_index()
+	if fnsi != -1 and pile[fnsi].value == 2:
+		placing_players_turn_again = true
 
 	var index: int = find_player_index(pid)
 	remove_cards_from_player(index, cards)
@@ -393,44 +413,44 @@ func unruly_move(pid: int, reason: String):
 
 
 func are_these_cards_placeable(cards: Array) -> bool:
+	# If a two has been placed then any card can be placed afterward
+	var two_placed = false
+
+	var fns: int = first_non_seven_index()
+	if fns >= 0:
+		two_placed = (pile[fns].value == 2)
+
+	# Get rid of 2's and 7's
+	var first_is_two: bool = cards[0].value == 2 and is_card_placeable(cards[0])
+	var seven_after_two: bool = cards[0].value == 7 and two_placed
+	if first_is_two or seven_after_two:
+		two_placed = true
+		# 2s and 7s allow other combinations after them
+		# Remove 2s and 7s in order to allow inspection of other
+		# structures
+		while len(cards) > 0 and (cards[0].value == 2 or (cards[0].value == 7 and not is_legal_stair(cards))):
+			cards.pop_front()
+
+	# Only 2s and 7s were placed
+	if len(cards) == 0:
+		return true
+
+	var is_first_placeable: bool = is_card_placeable(cards[0])
+
+	# Only one card placed
 	if len(cards) == 1:
-		return is_card_placeable(cards[0])
-	else:
-		# Mulitple cards
+		return is_first_placeable or two_placed
 
-		# If a two has been placed then any card can be placed afterward
-		var two_placed = false
+	# Mulitple cards were placed
 
-		var fns: int = first_non_seven_index()
-		if fns >= 0:
-			two_placed = (pile[fns].value == 2)
+	if is_legal_stair(cards):
+		return is_first_placeable or two_placed
 
-		# Get rid of 2's and 7's
-		if (cards[0].value == 2):
-			# Is placing a 2 allowed
-			if is_card_placeable(cards[0]):
-				two_placed = true
-				# 2s and 7s allow other combinations after them
-				# Remove 2s and 7s in order to allow inspection of other
-				# structures
-				while len(cards) > 0 and cards[0].value == 2 or (cards[0].value == 7 and not is_legal_stair(cards)):
-					cards.pop_front()
-
-		if len(cards) == 0:
-			placing_players_turn_again = true
-			return true
-
-		var is_first_placeable: bool = is_card_placeable(cards[0])
-
-		if is_legal_stair(cards):
-			return is_first_placeable or two_placed
-
-		var homogenous: bool = is_homogenous(cards)
-		if homogenous and (is_first_placeable or two_placed or is_at_least_tripple_three_on_knaker(cards)):
-			if len(cards) == 4:
-				should_pile_flip = true
-			return true
+	var homogenous: bool = is_homogenous(cards)
+	if homogenous and (is_first_placeable or two_placed or is_at_least_tripple_three_on_knaker(cards)):
+		return true
 	
+	# No allowed structure was matched
 	return false
 
 
@@ -475,13 +495,15 @@ func is_legal_stair(cards: Array) -> bool:
 
 			# Is this card one value higher than the previous?
 			var plus_one: bool = curr_val == prev_val + 1
-			# Is this a seven skip?
+			# Is this stair skipping a seven?
 			var seven_skip: bool = prev_val == 6 and curr_val == 8
+			# Is this stair skipping a ten?
+			var ten_skip: bool = prev_val == 9 and curr_val == Knight
 			# Is this a klätterknåker (climbing knaker)?
 			var climb: bool = prev_val == Knaker and curr_val == 3
 
 			# Check if gap is too large
-			if not (plus_one or seven_skip or climb):
+			if not (plus_one or seven_skip or ten_skip or climb):
 				return false
 
 		prev_val = curr_val
@@ -508,11 +530,10 @@ func is_card_placeable(card: Card) -> bool:
 		2:
 			return not is_top_knaker_at_least_rank(3)
 		3:
-			return tv == 3 or (tv == Knaker and not is_top_knaker_at_least_rank(2))
+			return tv == 3 or (tv == Knaker and not is_top_knaker_at_least_rank(3))
 		7:
 			return not is_top_knaker_at_least_rank(2)
 		10:
-			should_pile_flip = true
 			return not is_top_knaker_at_least_rank(4)
 		Knaker:
 			# TODO check if frippelknåker
