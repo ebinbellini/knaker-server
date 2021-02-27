@@ -6,9 +6,14 @@ const MAX_PLAYERS = 50
 var room_res = preload("res://room.tscn")
 onready var rooms = get_node("rooms")
 
+# All room names
 var room_names = []
-var names = {}
+# All player ID:s (PID)
 var pids = []
+# PID -> Player name
+var names = {}
+# PID -> Room name
+var player_room = {}
 
 
 func _ready():
@@ -45,6 +50,8 @@ remote func create_room(room_name):
 	var pid = get_tree().get_rpc_sender_id()
 	var l = len(room_name)
 	if (l > 0 && l <= 30 && find_room(room_name) == null) && names[pid] != null:
+		player_room[pid] = room_name
+
 		inst.name = room_name
 		inst.call_deferred("set_room_owner", pid)
 		inst.call_deferred("add_player", pid, names[pid])
@@ -64,12 +71,13 @@ remote func update_rooms():
 
 remote func join_room(room_name):
 	var pid = get_tree().get_rpc_sender_id()
-	print(pid, " joined room ", room_name)
 	var room = find_room(room_name)
 
 	# TODO tell the user if they can't join and why
 
 	if room != null and not room.playing and names[pid] != null and room.player_count() < 6:
+		player_room[pid] = room_name
+
 		room.add_player(pid, names[pid])
 
 		rpc_id(pid, "go_to_waiting_room")
@@ -104,6 +112,14 @@ func find_room(name: String) -> Node:
 			return room
 
 	return null
+
+
+func find_player_room(pid: int) -> Node:
+	var room_name = player_room[pid]
+	if room_name == null:
+		return null
+
+	return find_room(room_name)
 	
 
 remote func request_start_game(room_name):
@@ -114,21 +130,23 @@ remote func request_start_game(room_name):
 			start_game_for_room(room)
 
 
-func start_game_for_room(room):
-	print("STARTAR I RUM ", room)
+func start_game_for_room(room: Node):
 	for pid in room.player_ids():
-		print("BJUDER IN ", pid)
 		rpc_id(pid, "start_loading_game")
 
 
-remote func ready_for_game(room_name):
+remote func ready_for_game(room_name: String):
 	var pid = get_tree().get_rpc_sender_id()
-	print(pid, " är redo att spela")
 	var room = find_room(room_name)
 	room.set_ready(pid)
 
 
-remote func set_username(name):
+func all_players_ready(room: Node):
+	for id in room.player_ids():
+		rpc_id(id, "all_players_ready")
+
+
+remote func set_username(name: String):
 	var pid = get_tree().get_rpc_sender_id()
 	names[pid] = name
 	
@@ -147,10 +165,30 @@ remote func place_down_card(room_name: String):
 		room.player_placed_down_card(pid)
 
 
-remote func leave_game(room_name: String):
+remote func leave_game():
 	var pid = get_tree().get_rpc_sender_id()
-	var room = find_room(room_name)
+	var room = find_player_room(pid)
 
 	# TODO tell all players so they can update their UI
 	if room:
 		room.remove_player(pid)
+
+
+remote func done_trading():
+	var pid = get_tree().get_rpc_sender_id()
+	var room = find_player_room(pid)
+
+	if room == null:
+		return
+
+	room.set_done_trading(pid)
+
+	var ammount: int = room.players_done_trading()
+
+	for id in room.player_ids():
+		rpc_id(id, "update_done_trading_ammount", ammount)
+
+
+func trading_phase_ended(room):
+	for id in room.player_ids():
+		rpc_id(id, "start_playing_phase")

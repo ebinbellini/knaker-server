@@ -17,6 +17,7 @@ class Player:
 	var up: Array
 	var down: Array
 	var ready: bool
+	var	done_trading: bool
 
 
 # The available undealed cards
@@ -25,6 +26,8 @@ var deck: Array = []
 var players: Array = []
 # How many players are ready to play
 var ready_count: int = 0
+# How many players want to end the trading phase
+var done_trading_ammount: int = 0
 # Is the game in the trading phase
 var in_trading_phase: bool = false
 # Owner of the room
@@ -86,6 +89,24 @@ func set_ready(pid: int):
 			initialize_game()
 
 
+func set_done_trading(pid: int):
+	var index: int = find_player_index(pid)
+	if (!players[index].done_trading):
+		players[index].done_trading = true
+		done_trading_ammount += 1
+		if (done_trading_ammount == player_count()):
+			end_trading_phase()
+
+
+func players_done_trading() -> int:
+	return done_trading_ammount
+
+
+func end_trading_phase():
+	in_trading_phase = false
+	server.trading_phase_ended(self)
+
+
 func owner() -> int:
 	return owner_id
 
@@ -111,6 +132,7 @@ func initialize_game():
 	turn_index = 0
 	create_deck()
 	deal_cards()
+	server.all_players_ready(self)
 
 
 func deal_cards():
@@ -245,6 +267,10 @@ func player_placed_cards(pid: int, transferables: Array):
 
 	if len(cards) == 0:
 		unruly_move(pid, "HTSMT0C")
+		return
+
+	if in_trading_phase:
+		unruly_move(pid, "YMNPCDTP")
 		return
 
 	var valid_insertion: bool = is_valid_insertion(cards)
