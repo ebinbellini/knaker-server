@@ -15,6 +15,7 @@ class Player:
 	var id: int
 	var hand: Array
 	var up: Array
+	var locked_up_indexes: Array
 	var down: Array
 	var ready: bool
 	var	done_trading: bool
@@ -49,7 +50,6 @@ onready var server: Node = get_parent().get_parent()
 
 
 func add_player(pid: int, name: String):
-	print("adding player ", pid)
 	var new_player = Player.new()
 	new_player.id = pid
 	new_player.name = name
@@ -58,7 +58,7 @@ func add_player(pid: int, name: String):
 
 func player_ids() -> Array:
 	var ids: Array = []
-	for i in range(len(players)):
+	for i in range(player_count()):
 		ids.append(players[i].id)
 	return ids
 
@@ -94,17 +94,32 @@ func set_done_trading(pid: int):
 	if (!players[index].done_trading):
 		players[index].done_trading = true
 		done_trading_ammount += 1
-		if (done_trading_ammount == player_count()):
-			end_trading_phase()
+		end_trading_phase_if_possible()
 
 
 func players_done_trading() -> int:
 	return done_trading_ammount
 
 
-func end_trading_phase():
+func end_trading_phase_if_possible():
+	if not can_end_trading_phase():
+		return
+
 	in_trading_phase = false
 	server.trading_phase_ended(self)
+
+
+func can_end_trading_phase() -> bool:
+	# All players need to vote to begin
+	if done_trading_ammount < player_count():
+		return false
+
+	# All players need three stacks in their up cards
+	for player in players:
+		if len(player.up) != 3:
+			return false
+
+	return true
 
 
 func owner() -> int:
@@ -118,11 +133,11 @@ func remove_player(pid: int):
 	else:
 		return
 
-	if len(players) <= turn_index:
+	if player_count() <= turn_index:
 		turn_index -= 1
 
 	# Close room if no players are left
-	if len(players) == 0:
+	if player_count() == 0:
 		queue_free()
 
 
@@ -137,12 +152,13 @@ func initialize_game():
 
 func deal_cards():
 	for i in range(player_count()):
-		var p = players[i]
+		var p: Player = players[i]
 
 		# Reset
 		p.hand = []
 		p.up = []
 		p.down = []
+		p.locked_up_indexes = []
 
 		# Hand
 		for _j in range(3):
@@ -152,7 +168,7 @@ func deal_cards():
 		# Up
 		for _j in range(3):
 			var card: Card = deck.pop_back()
-			p.up.append(card)
+			p.up.append([card])
 
 		# Down
 		for _j in range(3):
@@ -160,6 +176,8 @@ func deal_cards():
 			p.down.append(card)
 
 		player_cards_changed(p)
+	
+	deck_ammount_changed()
 
 
 func send_player_cards_update(p: Player):
@@ -167,7 +185,11 @@ func send_player_cards_update(p: Player):
 	# and how many hand and down cards he has
 	for player in players:
 		if player.id != p.id:
-			server.rpc_id(player.id, "update_player_cards", p.id, len(p.hand), card_array_to_transferable(p.up), len(p.down))
+			var tup: Array = []
+			for stack in p.up:
+				tup.append(card_array_to_transferable(stack))
+
+			server.rpc_id(player.id, "update_player_cards", p.id, len(p.hand), tup, len(p.down))
 
 
 func create_deck():
@@ -251,9 +273,10 @@ func player_has_cards(player: Player, cards: Array) -> bool:
 	if selected_hand_cards == len(player.hand):
 		# Player is allowed to place his up cards
 		for comp_card in cards:
-			for card in player.up:
-				if are_cards_equal(card, comp_card):
-					selected_up_cards += 1
+			for stack in player.up:
+				for card in pile:
+					if are_cards_equal(card, comp_card):
+						selected_up_cards += 1
 
 	return selected_hand_cards + selected_up_cards == len(cards)
 	
@@ -262,7 +285,8 @@ func player_placed_cards(pid: int, transferables: Array):
 	placing_players_turn_again = false
 	should_pile_flip = false
 
-	print(pid, " försöker att lägga ", transferables)
+	# TODO place multiple up cards from the same up card stack
+
 	var cards = transferable_array_to_cards(remove_duplicates(transferables))
 
 	if len(cards) == 0:
@@ -316,7 +340,10 @@ func is_valid_insertion(cards: Array) -> bool:
 
 func player_cards_changed(player):
 	var thand = card_array_to_transferable(player.hand)
-	var tup = card_array_to_transferable(player.up)
+	var tup = []
+	for stack in player.up:
+		tup.append(card_array_to_transferable(stack))
+
 	server.rpc_id(player.id, "update_my_cards", thand, tup, len(player.down))
 
 	# Send to other players
@@ -332,6 +359,7 @@ func pick_up_pile(player: Player):
 
 func accept_move(cards: Array, transferables: Array, pid: int):
 	# The move is allowed!!
+
 	for p in players:
 		server.rpc_id(p.id, "cards_placed", transferables, pid)
 
@@ -358,6 +386,8 @@ func accept_move(cards: Array, transferables: Array, pid: int):
 		transfer_turn()
 
 	deal_new_cards_to_player(index)
+	
+	player_cards_changed(players[index])
 
 
 func is_top_flippable_quadruple() -> bool:
@@ -385,7 +415,7 @@ func is_top_flippable_quadruple() -> bool:
 
 func transfer_turn():
 	turn_index += 1
-	if turn_index >= len(players):
+	if turn_index >= player_count():
 		turn_index = 0
 
 
@@ -408,6 +438,12 @@ func deal_new_cards_to_player(index):
 
 	if dealt:
 		player_cards_changed(p)
+		deck_ammount_changed()
+
+
+func deck_ammount_changed():
+		for player in players:
+			server.rpc_id(player.id, "deck_ammount_changed", len(deck))
 
 
 func remove_cards_from_player(index, cards):
@@ -420,9 +456,10 @@ func remove_cards_from_player(index, cards):
 				break
 
 		for i in len(player.up):
-			if are_cards_equal(comp_card, player.up[i]):
-				players[index].up.remove(i)
-				break
+			for j in len(player.up[i]):
+				if are_cards_equal(comp_card, player.up[i][j]):
+					players[index].up[i].remove(j)
+					break
 
 		for i in len(player.down):
 			if are_cards_equal(comp_card, player.down[i]):
@@ -601,3 +638,136 @@ func remove_duplicates(list: Array) -> Array:
 		i += 1
 		
 	return list
+
+
+func place_card_on_opponent(placing_card: Array, placing_on_pid: int, placing_pid: int, stack_index: int):
+	# Only allowed during the trading phase
+	if not in_trading_phase:
+		return
+
+	# Check if players exist and find their indexes
+	var index: int = find_player_index(placing_on_pid)
+	if index == -1:
+		return
+
+	var placing_index: int = find_player_index(placing_pid)
+	if placing_index == -1:
+		return
+
+	var placed_on_player = players[index]
+	var placing_player = players[placing_index]
+	var placing: Card = transferable_to_card(placing_card)
+
+	# See if the card is in the placing player's hand cards
+	var placed_card_index: int = -1
+	# Was the card found in the player's hand
+	var in_hand: bool = false
+	for i in len(placing_player.hand):
+		if are_cards_equal(placing_player.hand[i], placing):
+			in_hand = true
+			placed_card_index = i
+
+	if not in_hand:
+		# See if the card is in the placing player's up cards
+		for i in len(placing_player.hand):
+			if are_cards_equal(placing_player.hand[i], placing):
+				placed_card_index = i
+
+	# Return if the placing player doesn't have the card
+	if placed_card_index == -1:
+		return
+
+	# Return if the chosen index is invalid
+	if stack_index >= len(placed_on_player.up):
+		return
+
+	# Find a card of the same value that the placed card can be placed on
+	var top_card = placed_on_player.up[stack_index][0]
+	if placing.value == top_card.value:
+		if in_hand:
+			placing_player.hand.remove(placed_card_index)
+		else:
+			placing_player.up.remove(placed_card_index)
+
+		placed_on_player.up[stack_index].append(placing)
+		placed_on_player.locked_up_indexes.append(stack_index)
+		# TODO make it possible to play an animation of the card flying to the opponent
+		player_cards_changed(placed_on_player)
+		player_cards_changed(placing_player)
+		deal_new_cards_to_player(placing_index)
+
+
+func pick_up_card(card: Array, pid: int):
+	# Only allowed during the trading phase
+	if not in_trading_phase:
+		return
+
+	var index: int = find_player_index(pid)
+	if index == -1:
+		return
+	var player = players[index]
+
+	var tcard: Card = transferable_to_card(card)
+	var to_remove: Array = []
+	for i in len(player.up):
+		for j in len(player.up[i]):
+			var up_card = player.up[i][j]
+			if are_cards_equal(tcard, up_card):
+				player.hand.append(up_card)
+				to_remove.append([i, j])
+
+	for dual_index in to_remove:
+		player.up[dual_index[0]].remove(dual_index[1])
+		if len(player.up[dual_index[0]]) == 0:
+			player.up.remove(dual_index[0])
+
+	player_cards_changed(player)
+
+
+func put_down_card(card: Array, pid: int, up_card_index: int):
+	# Only allowed during the trading phase
+	if not in_trading_phase:
+		return
+
+	var index: int = find_player_index(pid)
+	if index == -1:
+		return
+
+	var player = players[index]
+
+	# Find the card being placed
+	var tcard: Card = transferable_to_card(card)
+	var to_place_index: int = -1
+	for i in len(player.hand):
+		var hand_card = player.hand[i]
+		if are_cards_equal(tcard, hand_card):
+			to_place_index = i
+			break
+
+	# Return if the card couldn't be found
+	if to_place_index == -1:
+		return
+
+	# Figure out where to place it
+	var placed: bool = false
+	
+	if up_card_index < 0:
+		if len(player.up) < 3:
+			# Place in a new stack
+			player.up.append([player.hand[to_place_index]])
+			placed = true
+	elif up_card_index < len(player.up):
+		# Place in specified stack at index up_card_index
+		var top: Card = player.up[up_card_index][0]
+		if top.value == card[0]:
+			player.up[up_card_index].append(player.hand[to_place_index])
+			placed = true
+
+	if placed:
+		# Move the card
+		player.hand.remove(to_place_index)
+		deal_new_cards_to_player(index)
+		player_cards_changed(player)
+
+		# It might have become possible to end the trading phase
+		end_trading_phase_if_possible()

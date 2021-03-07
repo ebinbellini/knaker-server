@@ -87,20 +87,14 @@ remote func join_room(room_name):
 
 
 func update_player_names(room: Node):
-	print("UPDATERAR SPELARNAMNEN")
 	var rpids = room.player_ids()
-	print("RPIDS = ", rpids)
 	var rpnames = []
 	rpnames.resize(len(rpids))
 	for i in range(len(rpids)):
-		var pid = rpids[i]
-		print("PID = ", rpids)
+		var pid: int = rpids[i]
 		rpnames[i] = [pid, names[pid]]
 
-	print(rpnames)
-
 	for pid in rpids:
-		print("SKICKAR NAMN TILL ", pid)
 		rpc_id(pid, "update_player_names", rpnames)
 
 
@@ -122,11 +116,10 @@ func find_player_room(pid: int) -> Node:
 	return find_room(room_name)
 	
 
-remote func request_start_game(room_name):
+remote func request_start_game():
 	var pid = get_tree().get_rpc_sender_id()
-	var room = find_room(room_name)
-	if room != null:
-		if pid == room.owner(): # TODO and room.player_count() > 1:
+	var room = find_player_room(pid)
+	if room != null and pid == room.owner(): # TODO and room.player_count() > 1:
 			start_game_for_room(room)
 
 
@@ -135,10 +128,11 @@ func start_game_for_room(room: Node):
 		rpc_id(pid, "start_loading_game")
 
 
-remote func ready_for_game(room_name: String):
+remote func ready_for_game():
 	var pid = get_tree().get_rpc_sender_id()
-	var room = find_room(room_name)
-	room.set_ready(pid)
+	var room = find_player_room(pid)
+	if room != null:
+		room.set_ready(pid)
 
 
 func all_players_ready(room: Node):
@@ -151,17 +145,17 @@ remote func set_username(name: String):
 	names[pid] = name
 	
 
-remote func place_cards(room_name: String, cards: Array):
+remote func place_cards(cards: Array):
 	var pid = get_tree().get_rpc_sender_id()
-	var room = find_room(room_name)
-	if room:
+	var room = find_player_room(pid)
+	if room != null:
 		room.player_placed_cards(pid, cards)
 
 
-remote func place_down_card(room_name: String):
+remote func place_down_card():
 	var pid = get_tree().get_rpc_sender_id()
-	var room = find_room(room_name)
-	if room:
+	var room = find_player_room(pid)
+	if room != null:
 		room.player_placed_down_card(pid)
 
 
@@ -170,7 +164,7 @@ remote func leave_game():
 	var room = find_player_room(pid)
 
 	# TODO tell all players so they can update their UI
-	if room:
+	if room != null:
 		room.remove_player(pid)
 
 
@@ -189,6 +183,31 @@ remote func done_trading():
 		rpc_id(id, "update_done_trading_ammount", ammount)
 
 
-func trading_phase_ended(room):
+func trading_phase_ended(room: Node):
 	for id in room.player_ids():
 		rpc_id(id, "start_playing_phase")
+
+
+remote func place_card_on_opponent(card: Array, opponent_pid: int, stack_index: int):
+	var pid = get_tree().get_rpc_sender_id()
+	var room = find_player_room(pid)
+
+	if room != null:
+		room.place_card_on_opponent(card, opponent_pid, pid, stack_index)
+
+
+remote func pick_up_card(card: Array):
+	var pid = get_tree().get_rpc_sender_id()
+	var room = find_player_room(pid)
+
+	if room != null:
+		room.pick_up_card(card, pid)
+
+
+remote func put_down_card(card: Array, up_card_index: int):
+	# TODO: Specify which card to place on, or -1 for new stack
+	var pid = get_tree().get_rpc_sender_id()
+	var room = find_player_room(pid)
+
+	if room != null:
+		room.put_down_card(card, pid, up_card_index)
