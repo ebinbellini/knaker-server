@@ -205,9 +205,24 @@ remote func pick_up_card(card: Array):
 
 
 remote func put_down_card(card: Array, up_card_index: int):
-	# TODO: Specify which card to place on, or -1 for new stack
 	var pid = get_tree().get_rpc_sender_id()
 	var room = find_player_room(pid)
 
 	if room != null:
 		room.put_down_card(card, pid, up_card_index)
+
+
+remote func take_chance():
+	var pid = get_tree().get_rpc_sender_id()
+	var room = find_player_room(pid)
+
+	if room != null:
+		room.player_takes_chance(pid)
+
+
+remote func pick_up_cards():
+	var pid = get_tree().get_rpc_sender_id()
+	var room = find_player_room(pid)
+
+	if room != null:
+		room.player_picks_up_cards(pid)

@@ -41,6 +41,8 @@ var turn_index: int = 0
 var placing_players_turn_again: bool = false
 # Should the pile be flipped if placement is succesful
 var should_pile_flip: bool = false
+# Is the player placing only up cards
+var placing_only_up_cards: bool = false
 
 # Is a game currently taking place
 export var playing: bool = false
@@ -248,17 +250,15 @@ func player_placed_down_card(pid: int):
 
 	var placed_card = player.down.pop_back()
 
-	var placeable: bool = is_card_placeable(placed_card)
+	reset_placing_state()
+
+	var placeable: bool = are_these_cards_placeable([placed_card])
 	if not placeable:
 		player.hand.append(placed_card)
-		pick_up_pile(player)
+		player_picks_up_cards(pid)
 	else:
-		var transferable: Array = card_to_transferable(placed_card)
-		for p in players:
-			server.rpc_id(p.id, "cards_placed", [transferable], pid)
-		pile.append(placed_card)
-	
-	player_cards_changed(player)
+		var transferables: Array = [card_to_transferable(placed_card)]
+		accept_move([placed_card], transferables, pid)
 	
 
 func player_has_cards(player: Player, cards: Array) -> bool:
@@ -270,20 +270,46 @@ func player_has_cards(player: Player, cards: Array) -> bool:
 			if are_cards_equal(card, comp_card):
 				selected_hand_cards += 1
 
+	var stack_index = -1
 	if selected_hand_cards == len(player.hand):
 		# Player is allowed to place his up cards
 		for comp_card in cards:
-			for stack in player.up:
-				for card in pile:
-					if are_cards_equal(card, comp_card):
-						selected_up_cards += 1
+			for si in len(player.up):
+				var stack = player.up[si]
+				var top = stack[0]
+				if are_cards_equal(top, comp_card):
+					# The player may only place cards from one stack
+					if stack_index != -1 and stack_index != si:
+						return false
+					stack_index = si
+					selected_up_cards += 1
 
+	# If the player places one card in a stack, they have to place all
+	if stack_index != -1:
+		for comp_card in cards:
+			var found = false
+			for card in player.up[stack_index]:
+				if are_cards_equal(card, comp_card):
+					found = true
+
+			if not found:
+				return false
+
+	# See if the player is placing only up cards
+	placing_only_up_cards = (selected_hand_cards == 0)
+
+	# See if the ammount of found cards is the same as the ammount that the player placed
 	return selected_hand_cards + selected_up_cards == len(cards)
 	
 
-func player_placed_cards(pid: int, transferables: Array):
+func reset_placing_state():
 	placing_players_turn_again = false
 	should_pile_flip = false
+	placing_only_up_cards = false
+
+
+func player_placed_cards(pid: int, transferables: Array):
+	reset_placing_state()
 
 	# TODO place multiple up cards from the same up card stack
 
@@ -317,10 +343,15 @@ func player_placed_cards(pid: int, transferables: Array):
 	# edit the array safely
 	var placeable: bool = are_these_cards_placeable(cards.duplicate())
 	if not placeable and not valid_insertion:
-		if len(cards) == 1:
-			unruly_move(pid, "YMNPTCH")
+		if placing_only_up_cards:
+			remove_cards_from_player(index, cards)
+			player.hand += cards
+			player_picks_up_cards(pid)
 		else:
-			unruly_move(pid, "YMNPTHCH")
+			if len(cards) == 1:
+				unruly_move(pid, "YMNPTCH")
+			else:
+				unruly_move(pid, "YMNPTHCH")
 	else:
 		accept_move(cards, transferables, pid)
 
@@ -348,13 +379,6 @@ func player_cards_changed(player):
 
 	# Send to other players
 	send_player_cards_update(player)
-
-
-func pick_up_pile(player: Player):
-	for card in pile:
-		player.hand.append(card)
-
-	empty_pile()
 
 
 func accept_move(cards: Array, transferables: Array, pid: int):
@@ -450,17 +474,27 @@ func remove_cards_from_player(index, cards):
 	var player: Player = players[index]
 
 	for comp_card in cards:
+		# Hand cards
 		for i in len(player.hand):
 			if are_cards_equal(comp_card, player.hand[i]):
 				players[index].hand.remove(i)
 				break
 
+		# Up cards
 		for i in len(player.up):
 			for j in len(player.up[i]):
 				if are_cards_equal(comp_card, player.up[i][j]):
 					players[index].up[i].remove(j)
 					break
 
+		# Remove empty stacks from up cards
+		var upi: int = 0
+		while upi < len(player.up):
+			while upi < len(player.up) and len(player.up[upi]) == 0:
+				player.up.remove(upi)
+			upi += 1
+
+		# Down cards
 		for i in len(player.down):
 			if are_cards_equal(comp_card, player.down[i]):
 				players[index].down.remove(i)
@@ -638,6 +672,39 @@ func remove_duplicates(list: Array) -> Array:
 		i += 1
 		
 	return list
+
+
+func player_takes_chance(pid: int):
+	var index = find_player_index(pid)
+	if index == -1 or index != turn_index or len(deck) == 0:
+		return
+
+	reset_placing_state()
+
+	var player = players[index]
+	var placed_card: Card = deck.pop_back()
+	deck_ammount_changed()
+
+	if are_these_cards_placeable([placed_card]):
+		var transferable: Array = [card_to_transferable(placed_card)]
+		accept_move([placed_card], transferable, pid)
+	else:
+		player.hand.append(placed_card)
+		player_picks_up_cards(pid)
+
+
+func player_picks_up_cards(pid: int):
+	var index = find_player_index(pid)
+
+	if index == -1 or index != turn_index:
+		return
+
+	var player = players[index]
+	player.hand += pile
+	empty_pile()
+
+	player_cards_changed(player)
+	transfer_turn()
 
 
 func place_card_on_opponent(placing_card: Array, placing_on_pid: int, placing_pid: int, stack_index: int):
