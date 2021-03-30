@@ -120,7 +120,7 @@ remote func request_start_game():
 	var pid = get_tree().get_rpc_sender_id()
 	var room = find_player_room(pid)
 	if room != null and pid == room.owner(): # TODO and room.player_count() > 1:
-			start_game_for_room(room)
+		start_game_for_room(room)
 
 
 func start_game_for_room(room: Node):
@@ -226,3 +226,12 @@ remote func pick_up_cards():
 
 	if room != null:
 		room.player_picks_up_cards(pid)
+
+
+remote func leaderboard_want_to_play_again():
+	var pid = get_tree().get_rpc_sender_id()
+	var room = find_player_room(pid)
+
+	if room != null:
+		room.leaderboard_want_to_play_again(pid)
+

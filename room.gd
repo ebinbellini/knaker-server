@@ -19,6 +19,7 @@ class Player:
 	var down: Array
 	var ready: bool
 	var	done_trading: bool
+	var finished: bool
 
 
 # The available undealed cards
@@ -43,12 +44,40 @@ var placing_players_turn_again: bool = false
 var should_pile_flip: bool = false
 # Is the player placing only up cards
 var placing_only_up_cards: bool = false
+# The order in which players went out
+var leaderboard = []
+# The order in which players lost
+var failed = []
+# The players that want to play again
+var want_to_play_again: Array = []
 
 # Is a game currently taking place
 export var playing: bool = false
 
 
 onready var server: Node = get_parent().get_parent()
+
+
+func initialize_game():
+	for p in players:
+		p.ready = false
+		p.done_trading = false
+		p.locked_up_indexes = []
+		p.finished = false
+
+	ready_count = 0
+	done_trading_ammount = 0
+	turn_index = 0
+
+	playing = true
+	in_trading_phase = true
+
+	create_deck()
+	deal_cards()
+
+	leaderboard = []
+	failed = []
+	want_to_play_again = []
 
 
 func add_player(pid: int, name: String):
@@ -89,6 +118,7 @@ func set_ready(pid: int):
 		ready_count += 1
 		if (ready_count == player_count()):
 			initialize_game()
+			server.all_players_ready(self)
 
 
 func set_done_trading(pid: int):
@@ -141,15 +171,6 @@ func remove_player(pid: int):
 	# Close room if no players are left
 	if player_count() == 0:
 		queue_free()
-
-
-func initialize_game():
-	playing = true
-	in_trading_phase = true
-	turn_index = 0
-	create_deck()
-	deal_cards()
-	server.all_players_ready(self)
 
 
 func deal_cards():
@@ -409,9 +430,68 @@ func accept_move(cards: Array, transferables: Array, pid: int):
 	elif not placing_players_turn_again:
 		transfer_turn()
 
+	var player = players[index]
+
 	deal_new_cards_to_player(index)
-	
-	player_cards_changed(players[index])
+
+	if is_player_finished(player):
+		player.finished = true
+		var lost: bool = did_finished_player_lose()
+		if lost:
+			failed.append(player)
+		else:
+			leaderboard.append(player)
+
+		# Tell all players that this player is finished
+		for p in players:
+			server.rpc_id(p.id, "player_finished", pid, lost)
+
+		if are_all_players_finished():
+			end_game()
+
+	player_cards_changed(player)
+
+
+func are_all_players_finished() -> bool:
+	for player in players:
+		if not is_player_finished(player):
+			return false
+
+	return true
+
+
+func end_game():
+	# The order in which to place the players names in the leaderboard
+	var order = []
+
+	# The first in leaderboard comes first in order
+	for p in leaderboard:
+		order.append(p.name)
+
+	# The first in failed comes last in order
+	failed.invert()
+	for p in failed:
+		order.append(p.name)
+
+	for p in players:
+		server.rpc_id(p.id, "go_to_leaderboard", order)
+
+
+func did_finished_player_lose() -> bool:
+	# The player may not exit by flipping the pile
+	if len(pile) == 0:
+		return true
+
+	# The player may not exit with a 2
+	var fsn: int = first_non_seven_index()
+	if fsn != -1 and pile[fsn].value == 2:
+		return true
+
+	return false
+
+
+func is_player_finished(player: Player) -> bool:
+	return len(player.hand) == 0 and len(player.down) == 0
 
 
 func is_top_flippable_quadruple() -> bool:
@@ -442,6 +522,9 @@ func transfer_turn():
 	if turn_index >= player_count():
 		turn_index = 0
 
+	# This player is already done
+	if players[turn_index].finished and not are_all_players_finished():
+		transfer_turn()
 
 
 func empty_pile():
@@ -777,18 +860,29 @@ func pick_up_card(card: Array, pid: int):
 	var tcard: Card = transferable_to_card(card)
 	var to_remove: Array = []
 	for i in len(player.up):
-		for j in len(player.up[i]):
-			var up_card = player.up[i][j]
-			if are_cards_equal(tcard, up_card):
-				player.hand.append(up_card)
-				to_remove.append([i, j])
+		# Can not pick up cards from locked stacks
+		if not player.locked_up_indexes.has(i):
+			for j in len(player.up[i]):
+				var up_card = player.up[i][j]
+				if are_cards_equal(tcard, up_card):
+					player.hand.append(up_card)
+					to_remove.append([i, j])
 
 	for dual_index in to_remove:
-		player.up[dual_index[0]].remove(dual_index[1])
-		if len(player.up[dual_index[0]]) == 0:
-			player.up.remove(dual_index[0])
+		var si = dual_index[0]
+		player.up[si].remove(dual_index[1])
+		if len(player.up[si]) == 0:
+			player.up.remove(si)
+
+			# Update locked stacks
+			for i in len(player.locked_up_indexes):
+				var val: int = player.locked_up_indexes[i]
+				if val > si:
+					player.locked_up_indexes[i] -= 1
+
 
 	player_cards_changed(player)
+	transfer_turn()
 
 
 func put_down_card(card: Array, pid: int, up_card_index: int):
@@ -838,3 +932,31 @@ func put_down_card(card: Array, pid: int, up_card_index: int):
 
 		# It might have become possible to end the trading phase
 		end_trading_phase_if_possible()
+
+
+func leaderboard_want_to_play_again(pid: int):
+	for id in want_to_play_again:
+		# Already voted
+		if id == pid:
+			return
+
+	# This player has not already voted		
+	want_to_play_again.append(pid)
+
+	var ammount = len(want_to_play_again)
+
+	for p in players:
+		server.rpc_id(p.id, "update_players_who_want_to_play_again", ammount)
+
+	# If all players want to play again
+	if ammount == len(players):
+		# Play again
+		print("TIME TO PLAY AGAIN")
+		restart_game()
+
+
+func restart_game():
+	for p in players:
+		server.rpc_id(p.id, "restart_game")
+
+	initialize_game()
