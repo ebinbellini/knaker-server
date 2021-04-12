@@ -526,6 +526,10 @@ func transfer_turn():
 	if players[turn_index].finished and not are_all_players_finished():
 		transfer_turn()
 
+	var pid: int = players[turn_index].id
+	for p in players:
+		server.rpc_id(p.id, "this_player_has_turn", pid)
+
 
 func empty_pile():
 	for player in players:
