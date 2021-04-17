@@ -140,6 +140,10 @@ func end_trading_phase_if_possible():
 	in_trading_phase = false
 	server.trading_phase_ended(self)
 
+	var pid: int = players[turn_index].id
+	for p in players:
+		server.rpc_id(p.id, "this_player_has_turn", pid)
+
 
 func can_end_trading_phase() -> bool:
 	# All players need to vote to begin
@@ -165,12 +169,21 @@ func remove_player(pid: int):
 	else:
 		return
 
-	if player_count() <= turn_index:
-		turn_index -= 1
-
 	# Close room if no players are left
 	if player_count() == 0:
 		queue_free()
+
+	if player_count() <= turn_index:
+		turn_index -= 1
+
+	# Tell players who has the turn
+	for p in players:
+		server.rpc_id(p.id, "this_player_has_turn", pid)
+
+	# Tell all players that this player is finished
+	for p in players:
+		if (p.id != pid):
+			server.rpc_id(p.id, "player_finished", pid, "LEFT")
 
 
 func deal_cards():
@@ -229,6 +242,8 @@ func create_deck():
 		deck.append(create_card(Knaker, knaker_color))
 
 	deck.shuffle()
+
+	# DEBUG ONLY deck = deck.slice(0, 11)
 
 
 func create_card(value: int, color: int) -> Card:
@@ -344,7 +359,7 @@ func player_placed_cards(pid: int, transferables: Array):
 		unruly_move(pid, "YMNPCDTP")
 		return
 
-	var valid_insertion: bool = is_valid_insertion(cards)
+	var valid_insertion: bool = is_valid_insertion(cards, pid)
 
 	if find_player_index(pid) != turn_index and not valid_insertion:
 		unruly_move(pid, "INYTY")
@@ -377,7 +392,7 @@ func player_placed_cards(pid: int, transferables: Array):
 		accept_move(cards, transferables, pid)
 
 
-func is_valid_insertion(cards: Array) -> bool:
+func is_valid_insertion(cards: Array, pid: int) -> bool:
 	# Is this a valid "instick" (insertion)
 	var fnsi: int = first_non_seven_index()
 	if fnsi == -1:
@@ -386,8 +401,21 @@ func is_valid_insertion(cards: Array) -> bool:
 	if not is_homogenous(cards):
 		return false
 
+	for card in cards:
+		if not is_in_players_hand_cards(card, pid):
+			return false
+
 	var top: Card = pile[fnsi]
 	return cards[0].value == top.value
+
+
+func is_in_players_hand_cards(comp_card: Card, pid: int) -> bool:
+	var player = players[find_player_index(pid)]
+	for card in player.hand:
+		if are_cards_equal(comp_card, card):
+			return true
+
+	return false
 
 
 func player_cards_changed(player):
@@ -427,7 +455,8 @@ func accept_move(cards: Array, transferables: Array, pid: int):
 
 	if should_pile_flip:
 		empty_pile()
-	elif not placing_players_turn_again:
+	# Don't transfer turn if this is an "instick" (insertion)
+	elif not placing_players_turn_again and pid == players[turn_index].id:
 		transfer_turn()
 
 	var player = players[index]
@@ -436,20 +465,27 @@ func accept_move(cards: Array, transferables: Array, pid: int):
 
 	if is_player_finished(player):
 		player.finished = true
-		var lost: bool = did_finished_player_lose()
-		if lost:
-			failed.append(player)
-		else:
+		var successful: bool = did_finished_player_go_out_successfully()
+		if successful:
 			leaderboard.append(player)
+		else:
+			failed.append(player)
+
+		var reason: String = "PRO"
+		if not successful:
+			reason = "UNLUCKY"
 
 		# Tell all players that this player is finished
 		for p in players:
-			server.rpc_id(p.id, "player_finished", pid, lost)
+			server.rpc_id(p.id, "player_finished", pid, reason)
 
 		if are_all_players_finished():
 			end_game()
 
 	player_cards_changed(player)
+
+	should_pile_flip = false
+	placing_players_turn_again = false
 
 
 func are_all_players_finished() -> bool:
@@ -477,17 +513,17 @@ func end_game():
 		server.rpc_id(p.id, "go_to_leaderboard", order)
 
 
-func did_finished_player_lose() -> bool:
+func did_finished_player_go_out_successfully() -> bool:
 	# The player may not exit by flipping the pile
 	if len(pile) == 0:
-		return true
+		return false
 
 	# The player may not exit with a 2
 	var fsn: int = first_non_seven_index()
 	if fsn != -1 and pile[fsn].value == 2:
-		return true
+		return false
 
-	return false
+	return true
 
 
 func is_player_finished(player: Player) -> bool:
@@ -644,7 +680,7 @@ func is_at_least_tripple_three_on_knaker(cards: Array) -> bool:
 		if curr_val != 3:
 			return false
 
-	return not is_top_knaker_at_least_rank(4)
+	return is_top_knaker_at_least_rank(3) and not is_top_knaker_at_least_rank(4)
 
 
 func is_homogenous(cards: Array) -> bool:

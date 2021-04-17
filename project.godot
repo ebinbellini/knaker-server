@@ -26,11 +26,9 @@ gdscript/warnings/unused_class_variable=true
 
 [display]
 
-window/size/width=90
-window/size/height=12
-window/size/resizable=false
+window/size/width=200
+window/size/height=24
 window/vsync/use_vsync=false
-window/energy_saving/keep_screen_on=false
 window/ios/hide_home_indicator=false
 
 [network]
@@ -42,8 +40,10 @@ limits/tcp/connect_timeout_seconds=10
 quality/driver/driver_name="GLES2"
 quality/intended_usage/framebuffer_allocation=1
 quality/intended_usage/framebuffer_allocation.mobile=1
+quality/2d/use_pixel_snap=true
 vram_compression/import_etc=true
 vram_compression/import_etc2=false
+quality/filters/use_nearest_mipmap_filter=true
 quality/depth/hdr=false
 environment/default_environment="res://default_env.tres"
 quality/dynamic_fonts/use_oversampling=false

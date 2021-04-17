@@ -19,11 +19,10 @@ __meta__ = {
 }
 
 [node name="Label" type="Label" parent="."]
-margin_left = 3.22624
-margin_top = 2.62284
-margin_right = 169.226
-margin_bottom = 19.6228
-rect_scale = Vector2( 0.5, 0.5 )
+margin_left = 5.08027
+margin_top = 6.06609
+margin_right = 171.08
+margin_bottom = 23.0661
 custom_colors/font_color = Color( 0, 1, 0.184314, 1 )
 text = "Knåker server is running..."
 __meta__ = {

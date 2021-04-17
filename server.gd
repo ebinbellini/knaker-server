@@ -163,7 +163,6 @@ remote func leave_game():
 	var pid = get_tree().get_rpc_sender_id()
 	var room = find_player_room(pid)
 
-	# TODO tell all players so they can update their UI
 	if room != null:
 		room.remove_player(pid)
 
