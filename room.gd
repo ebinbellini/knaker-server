@@ -1,4 +1,4 @@
-# Copyright (C) 2021  Ebin Bellini ebinbellini@airmail.cc
+# Copyright (C) 2021 Ebin Bellini ebinbellini@airmail.cc
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -64,6 +64,8 @@ var leaderboard = []
 var failed = []
 # The players that want to play again
 var want_to_play_again: Array = []
+# Is this room visible to all players
+var public: bool = false
 
 # Is a game currently taking place
 export var playing: bool = false
@@ -81,7 +83,9 @@ func initialize_game():
 
 	ready_count = 0
 	done_trading_ammount = 0
-	turn_index = 0
+
+	# Give the turn to no-one
+	turn_index = -1
 
 	playing = true
 	in_trading_phase = true
@@ -92,6 +96,61 @@ func initialize_game():
 	leaderboard = []
 	failed = []
 	want_to_play_again = []
+
+
+func pid_of_player_with_worst_cards() -> int:
+	var value: int = 3
+	var found: bool = false
+	var ammount: int = 1
+	var candidates = players.duplicate(true)
+	var to_remove: Array
+
+	while true:
+		print("value = ", value, " ammount = ", ammount)
+		print(candidates)
+
+		to_remove = []
+		found = false
+
+		# Give up if we have gone too far
+		if value == 16:
+			return players[0].id
+
+		for player in candidates:
+			var count: int = 0
+			for card in player.hand:
+				if card.value == value:
+					count +=1
+					found = true
+
+			if count < ammount:
+				to_remove.append(player.id)
+
+		if found:
+			ammount += 1
+
+			# Remove all candidates in to_remove
+			for id in to_remove:
+				for i in len(candidates):
+					if candidates[i].id == id:
+						candidates.remove(i)
+						break
+
+			# When there's only one player left we're done
+			if len(candidates) == 1:
+				return candidates[0].id
+		else:
+			# No one had a card with the value of the variable value
+			# Try with a higher value
+			value += 1
+			ammount = 1
+
+			# Skip special cards
+			if [7, 10].has(value):
+				value += 1
+
+	# Silence errors
+	return -1
 
 
 func add_player(pid: int, name: String):
@@ -108,7 +167,7 @@ func player_ids() -> Array:
 	return ids
 
 
-func player_count():
+func player_count() -> int:
 	return len(players)
 
 
@@ -150,6 +209,10 @@ func players_done_trading() -> int:
 func end_trading_phase_if_possible():
 	if not can_end_trading_phase():
 		return
+
+	# Give turn to the player with the worst cards
+	var turn_pid: int = pid_of_player_with_worst_cards()
+	turn_index = find_player_index(turn_pid)
 
 	in_trading_phase = false
 	server.trading_phase_ended(self)
@@ -568,6 +631,9 @@ func is_top_flippable_quadruple() -> bool:
 
 
 func transfer_turn():
+	if in_trading_phase:
+		return 
+
 	turn_index += 1
 	if turn_index >= player_count():
 		turn_index = 0

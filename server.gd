@@ -1,4 +1,4 @@
-# Copyright (C) 2021  Ebin Bellini ebinbellini@airmail.cc
+# Copyright (C) 2021 Ebin Bellini ebinbellini@airmail.cc
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -59,8 +59,7 @@ func peer_disconnected(pid: int):
 		rooms.get_child(i).remove_player(pid)
 
 
-remote func create_room(room_name):
-	print("skapar rum ", room_name)
+remote func create_room(room_name: String, public: bool):
 	var inst = room_res.instance()
 	var pid = get_tree().get_rpc_sender_id()
 	var l = len(room_name)
@@ -68,20 +67,13 @@ remote func create_room(room_name):
 		player_room[pid] = room_name
 
 		inst.name = room_name
+		inst.public = public
 		inst.call_deferred("set_room_owner", pid)
 		inst.call_deferred("add_player", pid, names[pid])
 		rooms.call_deferred("add_child", inst)
 
 		rpc_id(pid, "go_to_waiting_room")
 
-
-remote func update_rooms():
-	var cc = rooms.get_child_count()
-	var rnames = []
-	for i in range(cc):
-		rnames.append(get_child(i).name)
-
-	rset("room_names", rnames)
 
 
 remote func join_room(room_name):
@@ -249,3 +241,13 @@ remote func leaderboard_want_to_play_again():
 	if room != null:
 		room.leaderboard_want_to_play_again(pid)
 
+
+remote func get_public_rooms():
+	var pid: int = get_tree().get_rpc_sender_id()
+	var results: Array = []
+
+	for room in rooms.get_children():
+		if room.public:
+			results.append([room.name, room.player_count()])
+
+	rpc_id(pid, "recieve_public_rooms", results)
