@@ -16,7 +16,7 @@
 extends Node
 
 const PORT = 1840
-const MAX_PLAYERS = 50
+const MAX_PLAYERS = 200
 
 var room_res = preload("res://room.tscn")
 onready var rooms = get_node("rooms")

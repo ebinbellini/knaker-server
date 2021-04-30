@@ -18,7 +18,7 @@ _global_script_class_icons={
 config/name="Knaker-server"
 run/main_scene="res://server.tscn"
 run/low_processor_mode_sleep_usec=6000
-config/icon="res://icon.png"
+config/icon="res://knåker server.png"
 
 [debug]
 
