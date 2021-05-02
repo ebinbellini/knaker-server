@@ -389,18 +389,19 @@ func player_has_cards(player: Player, cards: Array) -> bool:
 		for comp_card in cards:
 			for si in len(player.up):
 				var stack = player.up[si]
-				var top = stack[0]
-				if are_cards_equal(top, comp_card):
-					# The player may only place cards from one stack
-					if stack_index != -1 and stack_index != si:
-						return false
-					stack_index = si
-					selected_up_cards += 1
+				for card in stack:
+					if are_cards_equal(card, comp_card):
+						# The player may only place cards from one stack
+						if stack_index != -1 and stack_index != si:
+							return false
+						stack_index = si
+						selected_up_cards += 1
 
 	# If the player places one card in a stack, they have to place all
 	if stack_index != -1:
 		for comp_card in cards:
 			var found = false
+
 			for card in player.up[stack_index]:
 				if are_cards_equal(card, comp_card):
 					found = true
@@ -424,9 +425,14 @@ func reset_placing_state():
 func player_placed_cards(pid: int, transferables: Array):
 	reset_placing_state()
 
-	# TODO place multiple up cards from the same up card stack
+	var index: int = find_player_index(pid)
+	if index == -1:
+		unruly_move(pid, "AEHO")
+		return
 
-	var cards = transferable_array_to_cards(remove_duplicates(transferables))
+	var player: Player = players[index]
+
+	var cards: Array = transferable_array_to_cards(remove_duplicates(transferables))
 
 	if len(cards) == 0:
 		unruly_move(pid, "HTSMT0C")
@@ -441,12 +447,6 @@ func player_placed_cards(pid: int, transferables: Array):
 	if find_player_index(pid) != turn_index and not valid_insertion:
 		unruly_move(pid, "INYTY")
 		return
-
-	var index: int = find_player_index(pid)
-	if index == -1:
-		unruly_move(pid, "AEHO")
-		return
-	var player: Player = players[index]
 
 	if not player_has_cards(player, cards):
 		unruly_move(pid, "YMNPTCN")
