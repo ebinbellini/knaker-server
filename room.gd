@@ -106,9 +106,6 @@ func pid_of_player_with_worst_cards() -> int:
 	var to_remove: Array
 
 	while true:
-		print("value = ", value, " ammount = ", ammount)
-		print(candidates)
-
 		to_remove = []
 		found = false
 
@@ -320,7 +317,7 @@ func create_deck():
 
 	deck.shuffle()
 
-	# DEBUG ONLY deck = deck.slice(0, 11)
+	# DEBUG: deck = deck.slice(0, 11)
 
 
 func create_card(value: int, color: int) -> Card:
@@ -471,18 +468,22 @@ func player_placed_cards(pid: int, transferables: Array):
 
 func is_valid_insertion(cards: Array, pid: int) -> bool:
 	# Is this a valid "instick" (insertion)
-	var fnsi: int = first_non_seven_index()
-	if fnsi == -1:
+
+	# There has to be cards in the pile
+	if len(pile) == 0:
 		return false
 
+	# Has to be homogenous
 	if not is_homogenous(cards):
 		return false
 
+	# The player has to have the cards
 	for card in cards:
 		if not is_in_players_hand_cards(card, pid):
 			return false
 
-	var top: Card = pile[fnsi]
+	# The placed cards have to have the same value as the pile top
+	var top: Card = pile[len(pile)-1]
 	return cards[0].value == top.value
 
 
@@ -556,7 +557,7 @@ func accept_move(cards: Array, transferables: Array, pid: int):
 		for p in players:
 			server.rpc_id(p.id, "player_finished", pid, reason)
 
-		if are_all_players_finished():
+		if should_game_end():
 			end_game()
 
 	player_cards_changed(player)
@@ -565,12 +566,15 @@ func accept_move(cards: Array, transferables: Array, pid: int):
 	placing_players_turn_again = false
 
 
-func are_all_players_finished() -> bool:
+func should_game_end() -> bool:
+	# How many players are finished?
+	var done_count: int = 0
 	for player in players:
 		if not is_player_finished(player):
-			return false
+			done_count += 1
 
-	return true
+	# All but one player have to be finished
+	return done_count >= player_count() - 1
 
 
 func end_game():
@@ -639,7 +643,7 @@ func transfer_turn():
 		turn_index = 0
 
 	# This player is already done
-	if players[turn_index].finished and not are_all_players_finished():
+	if players[turn_index].finished and not should_game_end():
 		transfer_turn()
 
 	var pid: int = players[turn_index].id
@@ -1071,7 +1075,6 @@ func leaderboard_want_to_play_again(pid: int):
 	# If all players want to play again
 	if ammount == len(players):
 		# Play again
-		print("TIME TO PLAY AGAIN")
 		restart_game()
 
 
