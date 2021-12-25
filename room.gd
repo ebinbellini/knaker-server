@@ -70,7 +70,6 @@ var public: bool = false
 # Is a game currently taking place
 export var playing: bool = false
 
-
 onready var server: Node = get_parent().get_parent()
 
 
@@ -251,10 +250,11 @@ func remove_player(pid: int):
 		turn_index -= 1
 
 	# Tell players who has the turn
+	var turn_pid: int = players[turn_index].pid
 	for p in players:
-		server.rpc_id(p.id, "this_player_has_turn", pid)
+		server.rpc_id(p.id, "this_player_has_turn", turn_pid)
 
-	# Tell all players that this player is finished
+	# Tell all players that this player has lef
 	for p in players:
 		if (p.id != pid):
 			server.rpc_id(p.id, "player_finished", pid, "LEFT")
@@ -299,7 +299,7 @@ func send_player_cards_update(p: Player):
 			for stack in p.up:
 				tup.append(card_array_to_transferable(stack))
 
-			server.rpc_id(player.id, "update_player_cards", p.id, len(p.hand), tup, len(p.down))
+			server.rpc_id(player.id, "update_player_cards", p.id, len(p.hand), tup, len(p.down), p.locked_up_indexes)
 
 
 func create_deck():
@@ -317,7 +317,7 @@ func create_deck():
 
 	deck.shuffle()
 
-	# DEBUG: deck = deck.slice(0, 11)
+	# DEBUG: deck = deck.slice(0, 6*player_count()-1)
 
 
 func create_card(value: int, color: int) -> Card:
@@ -502,7 +502,7 @@ func player_cards_changed(player):
 	for stack in player.up:
 		tup.append(card_array_to_transferable(stack))
 
-	server.rpc_id(player.id, "update_my_cards", thand, tup, len(player.down))
+	server.rpc_id(player.id, "update_my_cards", thand, tup, len(player.down), player.locked_up_indexes)
 
 	# Send to other players
 	send_player_cards_update(player)
@@ -903,7 +903,7 @@ func player_takes_chance(pid: int):
 func player_picks_up_cards(pid: int):
 	var index = find_player_index(pid)
 
-	if index == -1 or index != turn_index:
+	if index == -1 or index != turn_index or len(pile) == 0:
 		return
 
 	var player = players[index]
