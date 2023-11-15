@@ -36,62 +36,80 @@ class Player:
 	var finished: bool
 
 
-# The available undealed cards
+# The available undealt cards
 var deck: Array = []
+
 # The players in this room
 var players: Array = []
+
 # How many players are ready to play
 var ready_count: int = 0
+
 # How many players want to end the trading phase
-var done_trading_ammount: int = 0
+var done_trading_amount: int = 0
+
 # Is the game in the trading phase
 var in_trading_phase: bool = false
+
 # Owner of the room
 var owner_id: int = 0
+
 # The pile on which players play their cards
 var pile: Array = []
+
 # Index of the player that has the turn
 var turn_index: int = 0
+
 # Does the turn return to the placing player if placement is succesful
 var placing_players_turn_again: bool = false
+
 # Should the pile be flipped if placement is succesful
 var should_pile_flip: bool = false
+
 # Is the player placing only up cards
 var placing_only_up_cards: bool = false
+
 # The order in which players went out
 var leaderboard = []
+
 # The order in which players lost
 var failed = []
+
 # The players that want to play again
 var want_to_play_again: Array = []
+
 # Is this room visible to all players
 var public: bool = false
 
-# Is a game currently taking place
+# Is a game currently ongoing
 export var playing: bool = false
 
 onready var server: Node = get_parent().get_parent()
 
 
 func initialize_game():
+	# Reset players
 	for p in players:
 		p.ready = false
 		p.done_trading = false
 		p.locked_up_indexes = []
 		p.finished = false
 
+	# Syncing
 	ready_count = 0
-	done_trading_ammount = 0
+	done_trading_amount = 0
 
-	# Give the turn to no-one
+	# Game state
 	turn_index = -1
-
 	playing = true
 	in_trading_phase = true
 
+	# Cards
 	create_deck()
 	deal_cards()
+	pile =[]
 
+	# Results
 	leaderboard = []
 	failed = []
 	want_to_play_again = []
@@ -100,7 +118,7 @@ func initialize_game():
 func pid_of_player_with_worst_cards() -> int:
 	var value: int = 3
 	var found: bool = false
-	var ammount: int = 1
+	var amount: int = 1
 	var candidates = players.duplicate(true)
 	var to_remove: Array
 
@@ -119,11 +137,11 @@ func pid_of_player_with_worst_cards() -> int:
 					count +=1
 					found = true
 
-			if count < ammount:
+			if count < amount:
 				to_remove.append(player.id)
 
 		if found:
-			ammount += 1
+			amount += 1
 
 			# Remove all candidates in to_remove
 			for id in to_remove:
@@ -139,10 +157,10 @@ func pid_of_player_with_worst_cards() -> int:
 			# No one had a card with the value of the variable value
 			# Try with a higher value
 			value += 1
-			ammount = 1
+			amount = 1
 
 			# Skip special cards
-			if [7, 10].has(value):
+			if [2, 7, 10].has(value):
 				value += 1
 
 	# Silence errors
@@ -194,12 +212,12 @@ func set_done_trading(pid: int):
 	var index: int = find_player_index(pid)
 	if (!players[index].done_trading):
 		players[index].done_trading = true
-		done_trading_ammount += 1
+		done_trading_amount += 1
 		end_trading_phase_if_possible()
 
 
 func players_done_trading() -> int:
-	return done_trading_ammount
+	return done_trading_amount
 
 
 func end_trading_phase_if_possible():
@@ -220,12 +238,12 @@ func end_trading_phase_if_possible():
 
 func can_end_trading_phase() -> bool:
 	# All players need to vote to begin
-	if done_trading_ammount < player_count():
+	if done_trading_amount < player_count():
 		return false
 
-	# All players need three stacks in their up cards
+	# All players need three stacks in their up cards if they can
 	for player in players:
-		if len(player.up) != 3:
+		if len(player.hand) > 0 && len(player.up) != 3:
 			return false
 
 	return true
@@ -236,25 +254,37 @@ func owner() -> int:
 
 
 func remove_player(pid: int):
-	var index: int = find_player_index(pid)
-	if index != -1:
-		players.remove(index)
-	else:
+	var player_index: int = find_player_index(pid)
+	if player_index == -1:
 		return
+	players.remove(player_index)
+	
+	var pcount: int = player_count()
 
 	# Close room if no players are left
-	if player_count() == 0:
+	if pcount == 0:
 		queue_free()
+		return
 
-	if player_count() <= turn_index:
-		turn_index -= 1
+	# turn_index is -1 if the match hasn't started
+	if turn_index != -1:
+		if turn_index >= pcount-1 && turn_index == player_index:
+			# The last player had the turn and left
+			turn_index = 0
+		elif player_index < turn_index:
+			# The player leaving was before the turn-haver
+			turn_index -= 1
 
-	# Tell players who has the turn
-	var turn_pid: int = players[turn_index].pid
-	for p in players:
-		server.rpc_id(p.id, "this_player_has_turn", turn_pid)
+		# If the leaving player is after or is the turn haver then nothing has
+		# to be done
+		
+		# Tell players who has the turn
+		var turn_player: Player = players[turn_index]
+		var turn_pid: int = turn_player.id
+		for p in players:
+			server.rpc_id(p.id, "this_player_has_turn", turn_pid)
 
-	# Tell all players that this player has lef
+	# Tell all players that this player has left
 	for p in players:
 		if (p.id != pid):
 			server.rpc_id(p.id, "player_finished", pid, "LEFT")
@@ -287,7 +317,7 @@ func deal_cards():
 
 		player_cards_changed(p)
 	
-	deck_ammount_changed()
+	deck_amount_changed()
 
 
 func send_player_cards_update(p: Player):
@@ -317,7 +347,8 @@ func create_deck():
 
 	deck.shuffle()
 
-	# DEBUG: deck = deck.slice(0, 6*player_count()-1)
+	# DEBUG:
+	deck = deck.slice(0, 9*player_count()-1)
 
 
 func create_card(value: int, color: int) -> Card:
@@ -350,12 +381,25 @@ func transferable_array_to_cards(transferable_array: Array) -> Array:
 
 
 func player_placed_down_card(pid: int):
-	var index: int = find_player_index(pid)
-	if index == -1:
+	var player_index: int = find_player_index(pid)
+	if player_index == -1:
+		unruly_move(pid, "AEHO")
 		return
-	var player: Player = players[index]
+
+	if player_index != turn_index:
+		unruly_move(pid, "INYTY")
+		return
+	
+	var player: Player = players[player_index]
+
+	if len(player.hand) > 0 or len(player.up) > 0:
+		# Player still has other cards and mustn't place down cards
+		unruly_move(pid, "YMNPTCN")
+		return
 
 	if len(player.down) == 0:
+		# Player has no down cards
+		unruly_move(pid, "AEHO")
 		return
 
 	var placed_card = player.down.pop_back()
@@ -374,42 +418,64 @@ func player_placed_down_card(pid: int):
 func player_has_cards(player: Player, cards: Array) -> bool:
 	var selected_hand_cards: int = 0
 	var selected_up_cards: int = 0
+	
+	# Check for duplicates
+	if len(remove_duplicates([] + cards)) != len(cards):
+		return false
 
-	for comp_card in cards:
-		for card in player.hand:
-			if are_cards_equal(card, comp_card):
-				selected_hand_cards += 1
+	# Copy of cards. All hand cards will be removed from this so that only up
+	# cards remain.
+	var up_cards_being_placed = [] + cards
 
-	var stack_index = -1
-	if selected_hand_cards == len(player.hand):
-		# Player is allowed to place his up cards
+	if len(player.hand) > 0:
 		for comp_card in cards:
-			for si in len(player.up):
-				var stack = player.up[si]
-				for card in stack:
-					if are_cards_equal(card, comp_card):
-						# The player may only place cards from one stack
-						if stack_index != -1 and stack_index != si:
-							return false
-						stack_index = si
-						selected_up_cards += 1
-
-	# If the player places one card in a stack, they have to place all
-	if stack_index != -1:
-		for comp_card in cards:
-			var found = false
-
-			for card in player.up[stack_index]:
-				if are_cards_equal(card, comp_card):
+			var found: bool = false
+			for hand_card in player.hand:
+				if are_cards_equal(hand_card, comp_card):
+					selected_hand_cards += 1
+					up_cards_being_placed.pop_front()
 					found = true
-
+					break
+			
 			if not found:
 				return false
+
+			# If all hand cards are selected and the player is only placing hand
+			# cards, then it is valid.
+			if len(cards) == selected_hand_cards:
+				return true
+			
+			# All hand cards selected, only up cards remain
+			if found and selected_hand_cards == len(player.hand):
+				break
+
+	var selected_count_per_up_stack = [0, 0, 0]
+
+	# Player is allowed to place his up cards. Check them.
+	for comp_card in up_cards_being_placed:
+		for stack_index in len(player.up):
+			var stack = player.up[stack_index]
+			for card in stack:
+				if are_cards_equal(card, comp_card):
+					selected_up_cards += 1
+					selected_count_per_up_stack[stack_index] += 1
+
+	# If the player places one card in a stack, they have to place all
+	for i in len(player.up):
+		var selected_amount = selected_count_per_up_stack[i]
+		var stack = player.up[i]
+		if selected_amount > 0 and selected_amount != len(stack):
+			return false
+
+	# If there are cards in the deck to pick up, then the player may not play
+	# up cards
+	if selected_up_cards > 0 && len(deck) > 0:
+		return false
 
 	# See if the player is placing only up cards
 	placing_only_up_cards = (selected_hand_cards == 0)
 
-	# See if the ammount of found cards is the same as the ammount that the player placed
+	# See if the amount of found cards is the same as the amount placed
 	return selected_hand_cards + selected_up_cards == len(cards)
 	
 
@@ -422,12 +488,12 @@ func reset_placing_state():
 func player_placed_cards(pid: int, transferables: Array):
 	reset_placing_state()
 
-	var index: int = find_player_index(pid)
-	if index == -1:
+	var player_index: int = find_player_index(pid)
+	if player_index == -1:
 		unruly_move(pid, "AEHO")
 		return
 
-	var player: Player = players[index]
+	var player: Player = players[player_index]
 
 	var cards: Array = transferable_array_to_cards(remove_duplicates(transferables))
 
@@ -440,8 +506,7 @@ func player_placed_cards(pid: int, transferables: Array):
 		return
 
 	var valid_insertion: bool = is_valid_insertion(cards, pid)
-
-	if find_player_index(pid) != turn_index and not valid_insertion:
+	if player_index != turn_index and not valid_insertion:
 		unruly_move(pid, "INYTY")
 		return
 
@@ -452,9 +517,17 @@ func player_placed_cards(pid: int, transferables: Array):
 	# Send a duplicate of cards in order to allow are_these_cards_placeable to
 	# edit the array safely
 	var placeable: bool = are_these_cards_placeable(cards.duplicate())
-	if not placeable and not valid_insertion:
+	if placeable or valid_insertion:
+		accept_move(cards, transferables, pid)
+	else:
+		# Invalid move
 		if placing_only_up_cards:
-			remove_cards_from_player(index, cards)
+			# May pick up one pile from hand cards
+			if not are_cards_in_same_up_pile(player, cards):
+				unruly_move(pid, "YMNPTHCH")
+				return
+
+			remove_cards_from_player(player_index, cards)
 			player.hand += cards
 			player_picks_up_cards(pid)
 		else:
@@ -462,8 +535,6 @@ func player_placed_cards(pid: int, transferables: Array):
 				unruly_move(pid, "YMNPTCH")
 			else:
 				unruly_move(pid, "YMNPTHCH")
-	else:
-		accept_move(cards, transferables, pid)
 
 
 func is_valid_insertion(cards: Array, pid: int) -> bool:
@@ -477,7 +548,7 @@ func is_valid_insertion(cards: Array, pid: int) -> bool:
 	if not is_homogenous(cards):
 		return false
 
-	# The player has to have the cards
+	# The player has to have the cards in his hand
 	for card in cards:
 		if not is_in_players_hand_cards(card, pid):
 			return false
@@ -531,10 +602,12 @@ func accept_move(cards: Array, transferables: Array, pid: int):
 	var index: int = find_player_index(pid)
 	remove_cards_from_player(index, cards)
 
+	var is_insertion = pid != players[turn_index].id
+
 	if should_pile_flip:
 		empty_pile()
 	# Don't transfer turn if this is an "instick" (insertion)
-	elif not placing_players_turn_again and pid == players[turn_index].id:
+	elif not placing_players_turn_again and not is_insertion:
 		transfer_turn()
 
 	var player = players[index]
@@ -589,6 +662,8 @@ func end_game():
 	failed.invert()
 	for p in failed:
 		order.append(p.name)
+
+	# TODO wait 2 seconds so the players can see the last card
 
 	for p in players:
 		server.rpc_id(p.id, "go_to_leaderboard", order)
@@ -645,6 +720,7 @@ func transfer_turn():
 	# This player is already done
 	if players[turn_index].finished and not should_game_end():
 		transfer_turn()
+		return
 
 	var pid: int = players[turn_index].id
 	for p in players:
@@ -652,10 +728,10 @@ func transfer_turn():
 
 
 func empty_pile():
+	pile = []
+
 	for player in players:
 		server.rpc_id(player.id, "empty_pile")
-
-	pile = []
 
 
 func deal_new_cards_to_player(index):
@@ -669,12 +745,12 @@ func deal_new_cards_to_player(index):
 
 	if dealt:
 		player_cards_changed(p)
-		deck_ammount_changed()
+		deck_amount_changed()
 
 
-func deck_ammount_changed():
+func deck_amount_changed():
 		for player in players:
-			server.rpc_id(player.id, "deck_ammount_changed", len(deck))
+			server.rpc_id(player.id, "deck_amount_changed", len(deck))
 
 
 func remove_cards_from_player(index, cards):
@@ -712,13 +788,41 @@ func are_cards_equal(card1: Card, card2: Card) -> bool:
 	return card1.value == card2.value and card1.color == card2.color 
 
 
+func are_cards_in_same_up_pile(player: Player, cards: Array) -> bool:
+	var found_cards = 0
+	var selected_count_per_up_stack = [0, 0, 0]
+
+	# Count how many cards are in each stack
+	for card in cards:
+		for stack_index in len(player.up):
+			var stack = player.up[stack_index]
+			for stack_card in stack:
+				if are_cards_equal(card, stack_card):
+					found_cards += 1
+					selected_count_per_up_stack[stack_index] += 1
+	
+	if found_cards != len(cards):
+		# Not all cards are up cards
+		return false
+	
+	# Check if more than one stack has a non-zero count
+	var found_nonzero = false
+	for count in selected_count_per_up_stack:
+		if count > 0:
+			if found_nonzero:
+				return false
+			found_nonzero = true
+
+	return true
+
+
 func unruly_move(pid: int, reason: String):
 	server.rpc_id(pid, "unruly_move", reason)
 
 
 func are_these_cards_placeable(cards: Array) -> bool:
 	# If a two has been placed then any card can be placed afterward
-	var two_placed = false
+	var two_placed = false 
 
 	var fns: int = first_non_seven_index()
 	if fns >= 0:
@@ -753,6 +857,8 @@ func are_these_cards_placeable(cards: Array) -> bool:
 	var homogenous: bool = is_homogenous(cards)
 	if homogenous and (is_first_placeable or two_placed or is_at_least_tripple_three_on_knaker(cards)):
 		return true
+
+	# TODO allow house "kåk"
 	
 	# No allowed structure was matched
 	return false
@@ -781,7 +887,7 @@ func is_homogenous(cards: Array) -> bool:
 func is_legal_stair(cards: Array) -> bool:
 	var prev_val: int = cards[0].value
 
-	# Ammount of unique values encountered
+	# Amount of unique values encountered
 	var unique: int = 1
 
 	# Check all cards, including the first
@@ -834,7 +940,7 @@ func is_card_placeable(card: Card) -> bool:
 		2:
 			return not is_top_knaker_at_least_rank(3)
 		3:
-			return tv == 3 or (tv == Knaker and not is_top_knaker_at_least_rank(3))
+			return tv <= 3 or (tv == Knaker and not is_top_knaker_at_least_rank(3))
 		7:
 			return not is_top_knaker_at_least_rank(2)
 		10:
@@ -890,7 +996,7 @@ func player_takes_chance(pid: int):
 
 	var player = players[index]
 	var placed_card: Card = deck.pop_back()
-	deck_ammount_changed()
+	deck_amount_changed()
 
 	if are_these_cards_placeable([placed_card]):
 		var transferable: Array = [card_to_transferable(placed_card)]
@@ -1067,13 +1173,13 @@ func leaderboard_want_to_play_again(pid: int):
 	# This player has not already voted		
 	want_to_play_again.append(pid)
 
-	var ammount = len(want_to_play_again)
+	var amount = len(want_to_play_again)
 
 	for p in players:
-		server.rpc_id(p.id, "update_players_who_want_to_play_again", ammount)
+		server.rpc_id(p.id, "update_players_who_want_to_play_again", amount)
 
 	# If all players want to play again
-	if ammount == len(players):
+	if amount == len(players):
 		# Play again
 		restart_game()
 

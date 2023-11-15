@@ -1,0 +1,11 @@
+2a60927148abd1d33b818b535e306557
+::res://::1686598500
+default_env.tres::Environment::-1::1686345111::0::1::::<><>::
+export_presets.cfg::TextFile::-1::1686345111::0::1::::<><>::
+knåker server.png::CompressedTexture2D::2251024851260596546::1686345111::1686598503::1::::<><>::
+knåker server.svg::CompressedTexture2D::4994545786924674907::1686345111::1686598503::1::::<><>::
+README.md::TextFile::-1::1686345111::0::1::::<><>::
+room.gd::GDScript::-1::1686345111::0::1::::<>Node<>::
+room.tscn::PackedScene::-1::1686345111::0::1::::<><>::res://room.gd
+server.gd::GDScript::-1::1686345111::0::1::::<>Node<>::
+server.tscn::PackedScene::481438221943469132::1686541863::0::1::::<><>::res://server.gd

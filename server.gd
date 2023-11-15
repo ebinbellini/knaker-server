@@ -15,7 +15,7 @@
 
 extends Node
 
-const PORT = 1840
+const PORT = 1841
 const MAX_PLAYERS = 200
 
 var room_res = preload("res://room.tscn")
@@ -40,7 +40,7 @@ func _ready():
 
 func set_network_peer():
 	var peer = WebSocketServer.new()
-	peer.listen(PORT, PoolStringArray(["ludus"]), true)
+	peer.listen(PORT, PoolStringArray([]), true)
 	# TODO USE MAX_PLAYERS
 
 	get_tree().network_peer = peer
@@ -73,7 +73,6 @@ remote func create_room(room_name: String, public: bool):
 		rooms.call_deferred("add_child", inst)
 
 		rpc_id(pid, "go_to_waiting_room")
-
 
 
 remote func join_room(room_name):
@@ -126,7 +125,7 @@ func find_player_room(pid: int) -> Node:
 remote func request_start_game():
 	var pid = get_tree().get_rpc_sender_id()
 	var room = find_player_room(pid)
-	if room != null and pid == room.owner(): # TODO and room.player_count() > 1:
+	if room != null and pid == room.owner() and room.player_count() > 1:
 		start_game_for_room(room)
 
 
@@ -183,10 +182,10 @@ remote func done_trading():
 
 	room.set_done_trading(pid)
 
-	var ammount: int = room.players_done_trading()
+	var amount: int = room.players_done_trading()
 
 	for id in room.player_ids():
-		rpc_id(id, "update_done_trading_ammount", ammount)
+		rpc_id(id, "update_done_trading_amount", amount)
 
 
 func trading_phase_ended(room: Node):
